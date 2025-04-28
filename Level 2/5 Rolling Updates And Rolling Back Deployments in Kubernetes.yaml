@@ -1,0 +1,97 @@
+There is a production deployment planned for next week. The Nautilus DevOps team wants to test the deployment update and rollback on Dev environment first so that they can identify the risks in advance. Below you can find more details about the plan they want to execute.
+
+
+    Create a namespace datacenter. Create a deployment called httpd-deploy under this new namespace, It should have one container called httpd, use httpd:2.4.27 image and 2 replicas. The deployment should use RollingUpdate strategy with maxSurge=1, and maxUnavailable=2. Also create a NodePort type service named httpd-service and expose the deployment on nodePort: 30008.
+
+    Now upgrade the deployment to version httpd:2.4.43 using a rolling update.
+
+    Finally, once all pods are updated undo the recent update and roll back to the previous/original version.
+
+Note:
+
+a. The kubectl utility on jump_host has been configured to work with the kubernetes cluster.
+
+b. Please make sure you only use the specified image(s) for this deployment and as per the sequence mentioned in the task description. If you mistakenly use a wrong image and fix it later, that will also distort the revision history which can eventually fail this task.
+
+
+k create ns datacenter
+namespace/devops created
+
+k config set-context --current --namespace=datacenter
+Context "kind-kodekloud" modified
+
+k create deployment httpd-deploy --image=httpd:2.4.27 --replicas=2 --dry-run=client -o yaml > deploy.yaml
+
+vi deploy.yaml
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  creationTimestamp: null
+  labels:
+    app: httpd-deploy
+  name: httpd-deploy
+  namespace: datacenter
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: httpd-deploy
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 2
+      maxSurge: 1
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        app: httpd-deploy
+    spec:
+      containers:
+      - image: httpd:2.4.27
+        name: httpd
+        resources: {}
+status: {}
+
+
+k expose deployment httpd-deploy --name=httpd-service --type=NodePort --dry-run=client --port=8080 -o yaml > service.yaml
+
+vi service.yaml
+
+apiVersion: v1
+kind: Service
+metadata:
+  creationTimestamp: null
+  labels:
+    app: httpd-deploy
+  name: httpd-service
+  namespace: datacenter
+spec:
+  ports:
+  - port: 8080
+    protocol: TCP
+    targetPort: 8080
+    nodePort: 30008
+  selector:
+    app: httpd-deploy
+  type: NodePort
+status:
+  loadBalancer: {}
+
+thor@jumphost ~$ k set image deployments httpd-deploy httpd=httpd:2.4.43 --namespace=datancenter --record=true
+
+thor@jumphost ~$ k rollout history deployment httpd-deploy 
+deployment.apps/httpd-deploy 
+REVISION  CHANGE-CAUSE
+1         <none>
+2         kubectl set image deployments httpd-deploy httpd=httpd:2.4.43 --namespace=datacenter --record=true
+
+thor@jumphost ~$ k rollout undo deployments httpd-deploy 
+deployment.apps/httpd-deploy rolled back
+
+thor@jumphost ~$ k rollout history deployment httpd-deploy 
+deployment.apps/httpd-deploy 
+REVISION  CHANGE-CAUSE
+2         kubectl set image deployments httpd-deploy httpd=httpd:2.4.43 --namespace=datacenter --record=true
+3         <none>

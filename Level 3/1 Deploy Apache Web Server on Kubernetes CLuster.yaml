@@ -1,0 +1,102 @@
+There is an application that needs to be deployed on Kubernetes cluster under Apache web server. The Nautilus application development team has asked the DevOps team to deploy it. We need to develop a template as per requirements mentioned below:
+
+    Create a namespace named as httpd-namespace-devops.
+
+    Create a deployment named as httpd-deployment-devops under newly created namespace. For the deployment use httpd image with latest tag only and remember to mention the tag i.e httpd:latest, and make sure replica counts are 2.
+
+    Create a service named as httpd-service-devops under same namespace to expose the deployment, nodePort should be 30004.
+
+Note: The kubectl utility on jump_host has been configured to work with the kubernetes cluster.
+
+
+
+
+thor@jumphost ~$ k create ns httpd-namespace-devops
+namespace/httpd-namespace-devops created
+thor@jumphost ~$ k config set-context --current --namespace=httpd-namespace-devops
+Context "kind-kodekloud" modified.
+thor@jumphost ~$ k config view
+apiVersion: v1
+clusters:
+- cluster:
+    certificate-authority-data: DATA+OMITTED
+    server: https://kodekloud-control-plane:6443
+  name: kind-kodekloud
+contexts:
+- context:
+    cluster: kind-kodekloud
+    namespace: httpd-namespace-devops
+    user: kind-kodekloud
+  name: kind-kodekloud
+current-context: kind-kodekloud
+kind: Config
+preferences: {}
+users:
+- name: kind-kodekloud
+  user:
+    client-certificate-data: DATA+OMITTED
+    client-key-data: DATA+OMITTED
+
+thor@jumphost ~$ k create deployment httpd-deployment-devops --image=httpd:latest --replicas=2 --dry-run=client -o yaml > depl.yaml
+thor@jumphost ~$ vi depl.yaml 
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  creationTimestamp: null
+  labels:
+    app: httpd-deployment-devops
+  name: httpd-deployment-devops
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: httpd-deployment-devops
+  strategy: {}
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        app: httpd-deployment-devops
+    spec:
+      containers:
+      - image: httpd:latest
+        name: httpd
+        ports:
+        - containerPort: 80
+          protocol: TCP
+        resources: {}
+status: {}
+
+thor@jumphost ~$ k apply -f depl.yaml 
+deployment.apps/httpd-deployment-devops created
+thor@jumphost ~$ k get deployments.apps 
+NAME                      READY   UP-TO-DATE   AVAILABLE   AGE
+httpd-deployment-devops   0/2     2            0           4s
+thor@jumphost ~$ k get pods
+NAME                                       READY   STATUS    RESTARTS   AGE
+httpd-deployment-devops-78cd897b98-jncv4   1/1     Running   0          9s
+httpd-deployment-devops-78cd897b98-pf6v7   1/1     Running   0          9s
+thor@jumphost ~$ k expose deployment httpd-deployment-devops --type=NodePort --port=8080 --dry-run=client -o yaml > ser.yaml
+
+apiVersion: v1
+kind: Service
+metadata:
+  creationTimestamp: null
+  labels:
+    app: httpd-deployment-devops
+  name: httpd-service-devops
+spec:
+  ports:
+  - port: 80
+    protocol: TCP
+    targetPort: 80    
+    nodePort: 30004
+  selector:
+    app: httpd-deployment-devops
+  type: NodePort
+status:
+  loadBalancer: {}
+
+thor@jumphost ~$ k apply -f ser.yaml 
+service/httpd-service-devops created

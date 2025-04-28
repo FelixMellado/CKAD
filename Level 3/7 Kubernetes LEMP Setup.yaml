@@ -1,0 +1,323 @@
+The Nautilus DevOps team want to deploy a static website on Kubernetes cluster. They are going to use Nginx, phpfpm and MySQL for the database. The team had already gathered the requirements and now they want to make this website live. Below you can find more details:
+
+
+    Create some secrets for MySQL.
+
+    Create a secret named mysql-root-pass wih key/value pairs as below:
+
+name: password
+value: R00t
+
+
+
+    Create a secret named mysql-user-pass with key/value pairs as below:
+
+name: username
+value: kodekloud_pop
+
+name: password
+value: YchZHRcLkL
+
+
+
+    Create a secret named mysql-db-url with key/value pairs as below:
+
+name: database
+value: kodekloud_db7
+
+
+
+    Create a secret named mysql-host with key/value pairs as below:
+
+name: host
+value: mysql-service
+
+
+
+    Create a config map php-config for php.ini with variables_order = "EGPCS" data.
+
+    Create a deployment named lemp-wp.
+
+    Create two containers under it. First container must be nginx-php-container using image webdevops/php-nginx:alpine-3-php7 and second container must be mysql-container from image mysql:5.6. Mount php-config configmap in nginx container at /opt/docker/etc/php/php.ini location.
+
+5) Add some environment variables for both containers:
+
+    MYSQL_ROOT_PASSWORD, MYSQL_DATABASE, MYSQL_USER, MYSQL_PASSWORD and MYSQL_HOST. Take their values from the secrets you created. Please make sure to use env field (do not use envFrom) to define the name-value pair of environment variables.
+
+6) Create a node port type service lemp-service to expose the web application, nodePort must be 30008.
+
+7) Create a service for mysql named mysql-service and its port must be 3306.
+
+    We already have a /tmp/index.php file on jump_host server.
+
+        Copy this file into the nginx container under document root i.e /app and replace the dummy values for mysql related variables with the environment variables you have set for mysql related parameters. Please make sure you do not hard code the mysql related details in this file, you must use the environment variables to fetch those values.
+
+        Once done, you must be able to access this website using Website button on the top bar, please note that you should see Connected successfully message while accessing this page.
+
+Note: The kubectl on jump_host has been configured to work with the kubernetes cluster.
+
+
+
+thor@jumphost ~$ k create secret generic mysql-root-pass --from-literal password=R00t; 
+secret/mysql-root-pass created
+thor@jumphost ~$ k  get secrets 
+NAME              TYPE     DATA   AGE
+mysql-root-pass   Opaque   1      5s
+thor@jumphost ~$ k describe secrets mysql-root-pass 
+Name:         mysql-root-pass
+Namespace:    default
+Labels:       <none>
+Annotations:  <none>
+
+Type:  Opaque
+
+Data
+====
+password:  4 bytes
+
+thor@jumphost ~$ k create secret generic mysql-user-pass --from-literal username=kodekloud_top --from-literal password=TmPcZjtRQx;
+secret/mysql-user-pass created
+thor@jumphost ~$ k get secrets 
+NAME              TYPE     DATA   AGE
+mysql-root-pass   Opaque   1      90s
+mysql-user-pass   Opaque   2      4s
+thor@jumphost ~$ k describe secrets mysql-user-pass 
+Name:         mysql-user-pass
+Namespace:    default
+Labels:       <none>
+Annotations:  <none>
+
+Type:  Opaque
+
+Data
+====
+password:  10 bytes
+username:  13 bytes
+
+thor@jumphost ~$ k create secret generic mysql-db-url --from-literal database=kodekloud_db9
+thor@jumphost ~$ k get secrets 
+NAME              TYPE     DATA   AGE
+mysql-db-url      Opaque   1      3s
+mysql-root-pass   Opaque   1      2m33s
+mysql-user-pass   Opaque   2      67s
+thor@jumphost ~$ k describe secrets mysql-db-url 
+Name:         mysql-db-url
+Namespace:    default
+Labels:       <none>
+Annotations:  <none>
+
+Type:  Opaque
+
+Data
+====
+database:  13 bytes
+
+thor@jumphost ~$ k create secret generic mysql-host --from-literal host=mysql-service
+secret/mysql-host created
+thor@jumphost ~$ k get secrets 
+NAME              TYPE     DATA   AGE
+mysql-db-url      Opaque   1      53s
+mysql-host        Opaque   1      4s
+mysql-root-pass   Opaque   1      3m23s
+mysql-user-pass   Opaque   2      117s
+thor@jumphost ~$ k describe secrets mysql-host 
+Name:         mysql-host
+Namespace:    default
+Labels:       <none>
+Annotations:  <none>
+
+Type:  Opaque
+
+Data
+====
+host:  13 bytes
+
+thor@jumphost ~$ echo 'variables_order="EGPCS"' > php.ini
+
+thor@jumphost ~$ k create cm php-config --from-file php.ini 
+configmap/php-config created
+thor@jumphost ~$ k get cm
+NAME               DATA   AGE
+kube-root-ca.crt   1      168m
+php-config         1      3s
+thor@jumphost ~$ k describe cm php-config 
+Name:         php-config
+Namespace:    default
+Labels:       <none>
+Annotations:  <none>
+
+Data
+====
+php.ini:
+----
+variables_order="EGPCS"
+
+
+BinaryData
+====
+
+Events:  <none>
+
+thor@jumphost ~$ k create deployment lemp-wp --image=webdevops/php-nginx:alpine-3-php7 --dry-run=client -o yaml > depl.yaml
+thor@jumphost ~$ vi depl.yaml 
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  creationTimestamp: null
+  labels:
+    app: lemp-wp
+  name: lemp-wp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: lemp-wp
+  strategy: {}
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        app: lemp-wp
+    spec:
+      containers:
+      - image: webdevops/php-nginx:alpine-3-php7
+        name: nginx-php-container
+        resources: {}
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-root-pass
+              key: password
+        - name: MYSQL_DATABASE
+          valueFrom:
+            secretKeyRef:
+              name: mysql-db-url
+              key: database
+        - name: MYSQL_USER
+          valueFrom:
+            secretKeyRef:
+              name: mysql-user-pass
+              key: username
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-user-pass
+              key: password
+        - name: MYSQL_HOST
+          valueFrom:
+            secretKeyRef:
+              name: mysql-host
+              key: host
+        volumeMounts:
+        - name: php-config
+          mountPath: /opt/docker/etc/php/php.ini
+          subPath: php.ini
+      - image: mysql:5.6
+        name: mysql-container
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-root-pass
+              key: password
+        - name: MYSQL_DATABASE
+          valueFrom:
+            secretKeyRef:
+              name: mysql-db-url
+              key: database
+        - name: MYSQL_USER
+          valueFrom:
+            secretKeyRef:
+              name: mysql-user-pass
+              key: username
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-user-pass
+              key: password
+        - name: MYSQL_HOST
+          valueFrom:
+            secretKeyRef:
+              name: mysql-host
+              key: host
+      volumes:
+      - name: php-config
+        configMap:
+          name: php-config
+status: {}
+          
+thor@jumphost ~$ k apply -f depl.yaml 
+deployment.apps/lemp-wp created
+thor@jumphost ~$ k get pods 
+NAME                       READY   STATUS    RESTARTS   AGE
+lemp-wp-699bc8d7df-x7857   2/2     Running   0          4s
+thor@jumphost ~$ k get deployments.apps 
+NAME      READY   UP-TO-DATE   AVAILABLE   AGE
+lemp-wp   1/1     1            1           9s          
+
+thor@jumphost ~$ k expose deployment lemp-wp --type=nodeport --port 80 --dry-run=client -o yaml > ser.yaml
+
+apiVersion: v1
+kind: Service
+metadata:
+  creationTimestamp: null
+  labels:
+    app: lemp-wp
+  name: lemp-service
+spec:
+  ports:
+  - port: 80
+    protocol: TCP
+    targetPort: 80
+    nodePort: 30008
+  selector:
+    app: lemp-wp
+  type: NodePort
+status:
+  loadBalancer: {}
+
+thor@jumphost ~$ k expose deployment lemp-wp --name mysql-service --port 3306 --dry-run=client -o yaml > serMy.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  creationTimestamp: null
+  labels:
+    app: lemp-wp
+  name: mysql-service
+spec:
+  ports:
+  - port: 3306
+    protocol: TCP
+    targetPort: 3306
+  selector:
+    app: lemp-wp
+status:
+  loadBalancer: {}
+~      
+
+thor@jumphost ~$ k apply -f serMy.yaml 
+service/mysql-service created
+
+thor@jumphost ~$ k cp /home/thor/index.php lemp-wp-699bc8d7df-jhjcl:/app -c nginx-php-container
+thor@jumphost ~$ k exec -it lemp-wp-699bc8d7df-jhjcl -c nginx-php-container -- ls /app
+index.php
+thor@jumphost ~$ k exec -it lemp-wp-699bc8d7df-jhjcl -c nginx-php-container -- cat /app/index.php
+<?php
+$dbname = $_ENV['MYSQL_DATABASE'];
+$dbuser = $_ENV['MYSQL_USER'];
+$dbpass = $_ENV['MYSQL_PASSWORD'];
+$dbhost = $_ENV['MYSQL_HOST'];
+
+$connect = mysqli_connect($dbhost, $dbuser, $dbpass) or die("Unable to Connect to '$dbhost'");
+
+$test_query = "SHOW TABLES FROM $dbname";
+$result = mysqli_query($test_query);
+
+if ($result->connect_error) {
+   die("Connection failed: " . $conn->connect_error);
+}
+  echo "Connected successfully";
+
+
+                       

@@ -1,0 +1,97 @@
+There are a number of parameters that are used by the applications. We need to define these as environment variables, so that we can use them as needed within different configs. Below is a scenario which needs to be configured on Kubernetes cluster. Please find below more details about the same.
+
+    Create a pod named envars.
+
+    Container name should be fieldref-container, use image redis preferable latest tag, use command 'sh', '-c' and args should be
+
+'while true; do
+      echo -en '/n';
+                                  printenv NODE_NAME POD_NAME;
+                                  printenv POD_IP POD_SERVICE_ACCOUNT;
+              sleep 10;
+         done;'
+
+(Note: please take care of indentations)
+
+    Define Four environment variables as mentioned below:
+
+a.) The first env should be named as NODE_NAME, set valueFrom fieldref and fieldPath should be spec.nodeName.
+
+b.) The second env should be named as POD_NAME, set valueFrom fieldref and fieldPath should be metadata.name.
+
+c.) The third env should be named as POD_IP, set valueFrom fieldref and fieldPath should be status.podIP.
+
+d.) The fourth env should be named as POD_SERVICE_ACCOUNT, set valueFrom fieldref and fieldPath shoulbe be spec.serviceAccountName.
+
+    Set restart policy to Never.
+
+    To check the output, exec into the pod and use printenv command.
+
+Note: The kubectl utility on jump_host has been configured to work with the kubernetes cluster.
+
+
+apiVersion: v1
+kind: Pod
+metadata:
+  creationTimestamp: null
+  labels:
+    run: envars
+  name: envars
+spec:
+  containers:
+    - name: fieldref-container
+      image: redis:latest
+      command: ["/bin/bash","-c","while true; do echo -en '/n'; printenv NODE_NAME POD_NAME; printenv POD_IP POD_SERVICE_ACCOUNT; sleep 10; done;"]
+      env:
+      - name: NODE_NAME
+        valueFrom:
+          fieldRef:
+            fieldPath: spec.nodeName
+      - name: POD_NAME
+        valueFrom:
+          fieldRef:
+            fieldPath: metadata.name
+      - name: POD_IP
+        valueFrom:
+          fieldRef:
+            fieldPath: status.podIP
+      - name: POD_SERVICE_ACCOUNT
+        valueFrom:
+          fieldRef:
+            fieldPath: spec.serviceAccountName
+      resources: {}
+  dnsPolicy: ClusterFirst
+  restartPolicy: Never
+status: {}
+
+thor@jumphost ~$ vi pod.yaml
+thor@jumphost ~$ k apply -f pod.yaml 
+pod/envars created
+thor@jumphost ~$ k get pods
+NAME     READY   STATUS    RESTARTS   AGE
+envars   1/1     Running   0          5s
+thor@jumphost ~$ k logs envars 
+/nkodekloud-control-plane
+envars
+10.244.0.7
+default
+thor@jumphost ~$ k exec envars -c fieldref-container -- printenv
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+HOSTNAME=envars
+GOSU_VERSION=1.17
+REDIS_VERSION=7.4.3
+REDIS_DOWNLOAD_URL=http://download.redis.io/releases/redis-7.4.3.tar.gz
+REDIS_DOWNLOAD_SHA=e1807d7c0f824f4c5450244ef50c1e596b8d09b35d03a83f4e018fb7316acf45
+NODE_NAME=kodekloud-control-plane
+POD_NAME=envars
+POD_IP=10.244.0.7
+POD_SERVICE_ACCOUNT=default
+KUBERNETES_PORT_443_TCP=tcp://10.96.0.1:443
+KUBERNETES_PORT_443_TCP_PROTO=tcp
+KUBERNETES_PORT_443_TCP_PORT=443
+KUBERNETES_PORT_443_TCP_ADDR=10.96.0.1
+KUBERNETES_SERVICE_HOST=10.96.0.1
+KUBERNETES_SERVICE_PORT=443
+KUBERNETES_SERVICE_PORT_HTTPS=443
+KUBERNETES_PORT=tcp://10.96.0.1:443
+HOME=/root

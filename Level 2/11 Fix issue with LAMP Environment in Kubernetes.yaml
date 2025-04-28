@@ -1,0 +1,70 @@
+One of the DevOps team member was trying to install a WordPress website on a LAMP stack which is essentially deployed on Kubernetes cluster. It was working well and we could see the installation page a few hours ago. However something is messed up with the stack now due to a website went down. Please look into the issue and fix it:
+
+
+FYI, deployment name is lamp-wp and its using a service named lamp-service. The Apache is using http default port and nodeport is 30008. From the application logs it has been identified that application is facing some issues while connecting to the database in addition to other issues. Additionally, there are some environment variables associated with the pods like MYSQL_ROOT_PASSWORD, MYSQL_DATABASE,  MYSQL_USER, MYSQL_PASSWORD, MYSQL_HOST.
+
+Also do not try to delete/modify any other existing components like deployment name, service name, types, labels etc.
+
+Note: The kubectl utility on jump_host has been configured to work with the kubernetes cluster.
+
+Change deployment NodePort from 30009 to 30008
+
+on httpd container there is a file inside /app/index.php 
+changes: 
+
+$dbpass = $_ENV[''MYSQL_PASSWORD""];
+$dbhost = $_ENV['MYSQL-HOST'];
+
+to 
+
+$dbpass = $_ENV['MYSQL_PASSWORD'];
+$dbhost = $_ENV['MYSQL_HOST'];
+
+once changed, create a configMap with file index.php like the one below
+
+thor@jumphost ~$ k describe cm index 
+Name:         index
+Namespace:    default
+Labels:       <none>
+Annotations:  <none>
+
+Data
+====
+index.php:
+----
+<?php
+$dbname = $_ENV['MYSQL_DATABASE'];
+$dbuser = $_ENV['MYSQL_USER'];
+$dbpass = $_ENV['MYSQL_PASSWORD'];
+$dbhost = $_ENV['MYSQL_HOST'];
+
+
+$connect = mysqli_connect($dbhost, $dbuser, $dbpass) or die("Unable to Connect to '$dbhost'");
+
+$test_query = "SHOW TABLES FROM $dbname";
+$result = mysqli_query($test_query);
+
+if ($result->connect_error) {
+   die("Connection failed: " . $conn->connect_error);
+}
+  echo "Connected successfully";
+
+
+Now, k edit desployment lamp-...
+
+add mountPath and volume confiMap
+
+- mountPath: /app/index.php
+  name: index
+  subPath: index.php       //need to check if on mountPath is just /app or /app/index.php because subPath is adding the file itself
+
+
+volumes: 
+- configMap:
+    defaultMode: 420
+    name: index
+  name: index
+    
+
+
+

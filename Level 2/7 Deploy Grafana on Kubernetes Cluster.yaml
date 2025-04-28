@@ -1,0 +1,98 @@
+The Nautilus DevOps teams is planning to set up a Grafana tool to collect and analyze analytics from some applications. They are planning to deploy it on Kubernetes cluster. Below you can find more details.
+
+
+1.) Create a deployment named grafana-deployment-datacenter using any grafana image for Grafana app. Set other parameters as per your choice.
+
+2.) Create NodePort type service with nodePort 32000 to expose the app.
+
+You need not to make any configuration changes inside the Grafana app once deployed, just make sure you are able to access the Grafana login page.
+
+Note: The kubectl on jump_host has been configured to work with kubernetes cluster.
+
+
+thor@jumphost ~$ k create namespace grafana
+namespace/grafana created
+thor@jumphost ~$ k config set-context --current --namespace=grafana
+Context "kind-kodekloud" modified.
+thor@jumphost ~$ k config view
+apiVersion: v1
+clusters:
+- cluster:
+    certificate-authority-data: DATA+OMITTED
+    server: https://kodekloud-control-plane:6443
+  name: kind-kodekloud
+contexts:
+- context:
+    cluster: kind-kodekloud
+    namespace: grafana
+    user: kind-kodekloud
+  name: kind-kodekloud
+current-context: kind-kodekloud
+kind: Config
+preferences: {}
+users:
+- name: kind-kodekloud
+  user:
+    client-certificate-data: DATA+OMITTED
+    client-key-data: DATA+OMITTED
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  creationTimestamp: null
+  labels:
+    app: grafana-deployment-datacenter
+  name: grafana-deployment-datacenter
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: grafana-deployment-datacenter
+  strategy: {}
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        app: grafana-deployment-datacenter
+    spec:
+      containers:
+      - image: grafana/grafana
+        name: grafana
+        ports:
+        - containerPort: 3000
+        resources: {}
+status: {}
+
+
+k expose deployment grafana-deployment-datacenter --type=NodePort --port=3000 --target-port=3000 --dry-run=client -o yaml > service.yaml
+
+apiVersion: v1
+kind: Service
+metadata:
+  creationTimestamp: "2025-04-18T09:49:40Z"
+  labels:
+    app: grafana-deployment-datacenter
+  name: grafana-deployment-datacenter
+  namespace: grafana
+  resourceVersion: "1553"
+  uid: be200fe3-81c2-4242-9ddc-11b723285498
+spec:
+  clusterIP: 10.96.64.33
+  clusterIPs:
+  - 10.96.64.33
+  externalTrafficPolicy: Cluster
+  internalTrafficPolicy: Cluster
+  ipFamilies:
+  - IPv4
+  ipFamilyPolicy: SingleStack
+  ports:
+  - nodePort: 32000
+    port: 3000
+    protocol: TCP
+    targetPort: 3000
+  selector:
+    app: grafana-deployment-datacenter
+  sessionAffinity: None
+  type: NodePort
+status:
+  loadBalancer: {}

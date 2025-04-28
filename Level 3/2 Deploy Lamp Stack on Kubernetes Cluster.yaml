@@ -1,0 +1,207 @@
+The Nautilus DevOps team want to deploy a PHP website on Kubernetes cluster. They are going to use Apache as a web server and Mysql for database. The team had already gathered the requirements and now they want to make this website live. Below you can find more details:
+
+
+1) Create a config map php-config for php.ini with variables_order = "EGPCS" data.
+
+2) Create a deployment named lamp-wp.
+
+3) Create two containers under it. First container must be httpd-php-container using image webdevops/php-apache:alpine-3-php7 and second container must be mysql-container from image mysql:5.6. Mount php-config configmap in httpd container at /opt/docker/etc/php/php.ini location.
+
+4) Create kubernetes generic secrets for mysql related values like myql root password, mysql user, mysql password, mysql host and mysql database. Set any values of your choice.
+
+5) Add some environment variables for both containers:
+
+a) MYSQL_ROOT_PASSWORD, MYSQL_DATABASE, MYSQL_USER, MYSQL_PASSWORD and MYSQL_HOST. Take their values from the secrets you created. Please make sure to use env field (do not use envFrom) to define the name-value pair of environment variables.
+
+6) Create a node port type service lamp-service to expose the web application, nodePort must be 30008.
+
+7) Create a service for mysql named mysql-service and its port must be 3306.
+
+8) We already have /tmp/index.php file on jump_host server.
+
+a) Copy this file into httpd container under Apache document root i.e /app and replace the dummy values for mysql related variables with the environment variables you have set for mysql related parameters. Please make sure you do not hard code the mysql related details in this file, you must use the environment variables to fetch those values.
+
+b) You must be able to access this index.php on node port 30008 at the end, please note that you should see Connected successfully message while accessing this page.
+
+Note:
+
+
+The kubectl utility on jump_host has been configured to work with the kubernetes cluster.
+
+
+thor@jumphost ~$vi php.ini
+variable_order="EGPCS"
+
+thor@jumphost ~$ k create cm php-config --from-file=php.ini
+configmap/php-cm created
+
+
+thor@jumphost ~$ kubectl create secret generic my-secret --from-literal=MYSQL_ROOT_PASSWORD=password --from-literal=MYSQL_DATABASE=database --from-literal=MYSQL_USER=user --from-literal=MYSQL_PASSWORD=mypass --from-literal=MYSQL_HOST=mysql-service --dry-run=client -o yaml > secret.yaml
+thor@jumphost ~$ k apply -f secret.yaml 
+secret/mysql-sec created
+thor@jumphost ~$ k describe secret my-secret
+Name:         my-secret
+Namespace:    default
+Labels:       <none>
+Annotations:  <none>
+
+Type:  Opaque
+
+Data
+====
+MYSQL_HOST:           13 bytes
+MYSQL_PASSWORD:       7 bytes
+MYSQL_ROOT_PASSWORD:  8 bytes
+MYSQL_USER:           4 bytes
+MYSQL_DATABASE:       8 bytes
+
+vi index.php
+
+
+<?php
+$dbname = getenv('MYSQL_DATABASE');
+$dbuser = getenv('MYSQL_USER');
+$dbpass = getenv('MYSQL_PASSWORD');
+$dbhost = getenv('MYSQL_HOST');
+
+
+$connect = mysqli_connect($dbhost, $dbuser, $dbpass) or die("Unable to Connect to '$dbhost'");
+
+$test_query = "SHOW TABLES FROM $dbname";
+$result = mysqli_query($test_query);
+
+if ($result->connect_error) {
+   die("Connection failed: " . $conn->connect_error);
+}
+  echo "Connected successfully";
+
+k create cm php-index --from-file=index.php
+
+---------------------------
+
+thor@jumphost ~$ k create deployment lamp-wp --image=webdevops/php-apache:alpine-3-php7 --dry-run=client -o yaml > depl.yaml
+thor@jumphost ~$ vi depl.yaml 
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: lamp-wp
+  name: lamp-wp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: lamp-wp
+  template:
+    metadata:
+      labels:
+        app: lamp-wp
+    spec:
+      containers:
+        - name: httpd-php-container
+          image: webdevops/php-apache:alpine-3-php7
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: my-secret
+                  key: MYSQL_ROOT_PASSWORD
+            - name: MYSQL_DATABASE
+              valueFrom:
+                secretKeyRef:
+                  name: my-secret
+                  key: MYSQL_DATABASE
+            - name: MYSQL_USER
+              valueFrom:
+                secretKeyRef:
+                  name: my-secret
+                  key: MYSQL_USER
+            - name: MYSQL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: my-secret
+                  key: MYSQL_PASSWORD
+            - name: MYSQL_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: my-secret
+                  key: MYSQL_HOST
+          volumeMounts:
+            - name: php-config
+              mountPath: /opt/docker/etc/php/php.ini
+              subPath: php.ini
+            - name: php-index
+              mountPath: /app/index.php
+              subPath: index.php
+        - name: mysql-container
+          image: mysql:5.6
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: my-secret
+                  key: MYSQL_ROOT_PASSWORD
+            - name: MYSQL_DATABASE
+              valueFrom:
+                secretKeyRef:
+                  name: my-secret
+                  key: MYSQL_DATABASE
+            - name: MYSQL_USER
+              valueFrom:
+                secretKeyRef:
+                  name: my-secret
+                  key: MYSQL_USER
+            - name: MYSQL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: my-secret
+                  key: MYSQL_PASSWORD
+            - name: MYSQL_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: my-secret
+                  key: MYSQL_HOST
+      volumes:
+        - name: php-config
+          configMap:
+            name: php-config
+        - name: php-index
+          configMap:
+            name: php-index
+
+k apply -f depl.yaml 
+
+---------------------
+
+thor@jumphost ~$ k expose deployment lamp-wp --name=lamp-service --type=NodePort --port=80 
+
+k edit service lamp-service
+
+apiVersion: v1
+kind: Service
+metadata:
+  creationTimestamp: null
+  labels:
+    app: lamp-service
+  name: lamp-service
+spec:
+  ports:
+  - name: "80"
+    nodePort: 30008
+    port: 80
+    protocol: TCP
+    targetPort: 80
+  selector:
+    app: lamp-service
+  type: NodePort
+status:
+  loadBalancer: {}
+
+---------------------
+ 
+k expose deployment lamp-wp --name=mysql-service --port=3306 
+
+----------------------
+
+
+
