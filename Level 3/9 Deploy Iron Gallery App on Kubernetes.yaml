@@ -1,0 +1,216 @@
+There is an iron gallery app that the Nautilus DevOps team was developing. They have recently customized the app and are going to deploy the same on the Kubernetes cluster. Below you can find more details:
+
+
+    Create a namespace iron-namespace-xfusion
+
+    Create a deployment iron-gallery-deployment-xfusion for iron gallery under the same namespace you created.
+
+    :- Labels run should be iron-gallery.
+
+    :- Replicas count should be 1.
+
+    :- Selector's matchLabels run should be iron-gallery.
+
+    :- Template labels run should be iron-gallery under metadata.
+
+    :- The container should be named as iron-gallery-container-xfusion, use kodekloud/irongallery:2.0 image ( use exact image name / tag ).
+
+    :- Resources limits for memory should be 100Mi and for CPU should be 50m.
+
+    :- First volumeMount name should be config, its mountPath should be /usr/share/nginx/html/data.
+
+    :- Second volumeMount name should be images, its mountPath should be /usr/share/nginx/html/uploads.
+
+    :- First volume name should be config and give it emptyDir and second volume name should be images, also give it emptyDir.
+
+    Create a deployment iron-db-deployment-xfusion for iron db under the same namespace.
+
+    :- Labels db should be mariadb.
+
+    :- Replicas count should be 1.
+
+    :- Selector's matchLabels db should be mariadb.
+
+    :- Template labels db should be mariadb under metadata.
+
+    :- The container name should be iron-db-container-xfusion, use kodekloud/irondb:2.0 image ( use exact image name / tag ).
+
+    :- Define environment, set MYSQL_DATABASE its value should be database_blog, set MYSQL_ROOT_PASSWORD and MYSQL_PASSWORD value should be with some complex passwords for DB connections, and MYSQL_USER value should be any custom user ( except root ).
+
+    :- Volume mount name should be db and its mountPath should be /var/lib/mysql. Volume name should be db and give it an emptyDir.
+
+    Create a service for iron db which should be named iron-db-service-xfusion under the same namespace. Configure spec as selector's db should be mariadb. Protocol should be TCP, port and targetPort should be 3306 and its type should be ClusterIP.
+
+    Create a service for iron gallery which should be named iron-gallery-service-xfusion under the same namespace. Configure spec as selector's run should be iron-gallery. Protocol should be TCP, port and targetPort should be 80, nodePort should be 32678 and its type should be NodePort.
+
+Note:
+
+    We don't need to make connection b/w database and front-end now, if the installation page is coming up it should be enough for now.
+
+    The kubectl on jump_host has been configured to work with the kubernetes cluster.
+
+
+
+thor@jumphost ~$ k create ns iron-namespace-xfusion
+namespace/iron-namespace-xfusion created
+thor@jumphost ~$ k config set-context --current --namespace=iron-namespace-xfusion
+Context "kind-kodekloud" modified.
+thor@jumphost ~$ k config view
+apiVersion: v1
+clusters:
+- cluster:
+    certificate-authority-data: DATA+OMITTED
+    server: https://kodekloud-control-plane:6443
+  name: kind-kodekloud
+contexts:
+- context:
+    cluster: kind-kodekloud
+    namespace: iron-namespace-xfusion
+    user: kind-kodekloud
+  name: kind-kodekloud
+current-context: kind-kodekloud
+kind: Config
+preferences: {}
+users:
+- name: kind-kodekloud
+  user:
+    client-certificate-data: DATA+OMITTED
+    client-key-data: DATA+OMITTED
+
+thor@jumphost ~$ k create deployment iron-gallery-deployment-xfusion --replicas=1 --image=kodekloud/irongallery:2.0 --dry-run=client -o yaml > dep.yaml
+thor@jumphost ~$ vi dep.yaml 
+
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    run: iron-gallery
+  name: iron-gallery-deployment-xfusion
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      run: iron-gallery
+  strategy: {}
+  template:
+    metadata:
+      labels:
+        run: iron-gallery
+    spec:
+      containers:
+      - image: kodekloud/irongallery:2.0
+        name: iron-gallery-container-xfusion
+        resources:
+          requests:
+            memory: 100Mi
+            cpu: 50m
+          limits:
+            memory: 100Mi
+            cpu: 50m
+        volumeMounts:
+        - name: config
+          mountPath: /usr/share/nginx/html/data
+        - name: images
+          mountPath: /usr/share/nginx/html/uploads
+      volumes:
+      - name: config
+        emptyDir: {}
+      - name: images
+        emptyDir: {}
+
+thor@jumphost ~$ k apply -f dep.yaml 
+deployment.apps/iron-gallery-deployment-xfusion created
+thor@jumphost ~$ vi dep.yaml 
+
+
+thor@jumphost ~$ k create deployment iron-db-deployment-xfusion --replicas=1 --image=kodekloud/irondb:2.0 --dry-run=client -o yaml > depMy.yaml
+thor@jumphost ~$ vi depMy.yaml 
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  creationTimestamp: null
+  labels:
+    db: mariadb
+  name: iron-db-deployment-xfusion
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      db: mariadb
+  strategy: {}
+  template:
+    metadata:
+      labels:
+        db: mariadb
+    spec:
+      containers:
+      - image: kodekloud/irondb:2.0
+        name: iron-db-container-xfusion
+        resources: {}
+        env:
+          - name: MYSQL_DATABASE
+            value: "database_host"
+          - name: MYSQL_ROOT_PASSWORD
+            value: "root"
+          - name: MYSQL_PASSWORD
+            value: "user"
+          - name: MYSQL_USER
+            value: "me"
+        volumeMounts:
+        - name: db
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: db
+        emptyDir: {}
+
+
+thor@jumphost ~$ k expose deployment iron-db-deployment-xfusion --labels=db=mariadb --port=3306 --dry-run=client -o yaml > sermysql.yaml
+thor@jumphost ~$ vi sermysql.yaml 
+
+apiVersion: v1
+kind: Service
+metadata:
+  creationTimestamp: null
+  labels:
+    db: mariadb
+  name: iron-db-service-xfusion
+spec:
+  ports:
+  - port: 3306
+    protocol: TCP
+    targetPort: 3306
+  selector:
+    app: iron-db-deployment-xfusion
+    db: mariadb
+  type: ClusterIP
+status:
+  loadBalancer: {}  
+
+thor@jumphost ~$ k expose deployment iron-db-deployment-xfusion --labels=db=mariadb --port=3306 service/iron-db-deployment-xfusion exposed
+
+thor@jumphost ~$ k expose deployment iron-gallery-deployment-xfusion --name=iron-gallery-service-xfusion --labels=run=iron-gallery --port=80 --dry-run=client -o yaml > ser.yaml
+thor@jumphost ~$ vi ser.yaml 
+
+apiVersion: v1
+kind: Service
+metadata:
+  creationTimestamp: null
+  labels:
+    run: iron-gallery
+  name: iron-gallery-service-xfusion
+spec:
+  ports:
+  - port: 80
+    protocol: TCP
+    targetPort: 80
+    nodePort: 32678
+  selector:
+    run: iron-gallery
+  type: NodePort
+status:
+  loadBalancer: {}
+
+thor@jumphost ~$ k apply -f ser.yaml 
+service/iron-gallery-service-xfusion created  
